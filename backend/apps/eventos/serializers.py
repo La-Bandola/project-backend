@@ -17,6 +17,7 @@ class EventoSerializer(serializers.ModelSerializer):
     participant_ids   = serializers.ListField(
         child=serializers.IntegerField(), write_only=True, required=False
     )
+    
 
     class Meta:
         model  = Evento
@@ -52,6 +53,32 @@ class EventoSerializer(serializers.ModelSerializer):
                 )
 
         return evento
+    
+    def update(self, instance, validated_data):
+        participant_ids = validated_data.pop('participant_ids', None)
+        validated_data.pop('responsible_id', None)
+
+        # Actualizar campos básicos
+        instance.name         = validated_data.get('name', instance.name)
+        instance.total_amount = validated_data.get('total_amount', instance.total_amount)
+        instance.split_type   = validated_data.get('split_type', instance.split_type)
+        instance.save()
+
+        # Si vienen nuevos participantes los recalcula
+        if participant_ids is not None:
+            from apps.users.models import User
+            instance.participants.all().delete()
+            count = len(participant_ids)
+            for uid in participant_ids:
+                user = User.objects.get(id=uid)
+                amount = instance.total_amount / count if instance.split_type == 'equal' else 0
+                EventoParticipant.objects.create(
+                    evento=instance,
+                    user=user,
+                    amount_owed=amount
+                )
+
+        return instance
 
 
 class SuscripcionSerializer(serializers.ModelSerializer):
@@ -69,3 +96,5 @@ class SuscripcionSerializer(serializers.ModelSerializer):
             from apps.users.models import User
             validated_data['responsible'] = User.objects.get(id=responsible_id)
         return Suscripcion.objects.create(**validated_data)
+    
+    
