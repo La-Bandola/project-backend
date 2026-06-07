@@ -59,13 +59,36 @@
             v-model="eventoForm.split_type"
             class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
           >
+          <option disabled value="">
+          Seleccione un responsable
+          </option>
+          
             <option value="equal">Partes iguales</option>
             <option value="custom">Monto personalizado</option>
           </select>
+          
+          <select 
+            v-model="eventoForm.responsible_id" required
+            class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          >
+          <option disabled value="">
+          Seleccione un responsable
+          </option>
+
+          <option
+            v-for="miembro in miembros"
+            :key="miembro.id"
+            :value="miembro.id"
+          >
+            {{ miembro.username }}
+          </option>
+        </select>
+
           <button
             type="submit"
             class="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition font-medium"
           >
+
             Crear evento
           </button>
         </form>
@@ -141,6 +164,7 @@ const parches = useParchesStore()
 const auth    = useAuthStore()
 const parche  = ref(null)
 const eventos = ref([])
+const miembros = ref([])
 const error   = ref(null)
 const balance = ref({ pagado: 0, recibido: 0, deudas: 0, neto: 0 })
 
@@ -153,8 +177,10 @@ const eventoForm = reactive({
 onMounted(async () => {
   await auth.fetchProfile()
   parche.value = await parches.fetchParche(route.params.id)
+
   await fetchEventos()
   await fetchBalance()
+  await fetchMiembros()
 })
 
 const fetchEventos = async () => {
@@ -174,13 +200,25 @@ const fetchBalance = async () => {
   balance.value = data
 }
 
+const fetchMiembros = async () => {
+  try {
+    const { data } = await api.get(
+      `/parches/${route.params.id}/members/`
+    )
+
+    miembros.value = data
+  } catch (e) {
+    console.error('error cargando miembros:', e.response?.data)
+  }
+}
+
 const handleCrearEvento = async () => {
   try {
     await api.post(`/parches/${route.params.id}/eventos/`, {
       name:            eventoForm.name,
       total_amount:    eventoForm.total_amount,
       split_type:      eventoForm.split_type,
-      responsible_id:  auth.user.id,
+      responsible_id:  eventoForm.responsible_id || null,
       participant_ids: [auth.user.id],
     })
     eventoForm.name         = ''

@@ -3,6 +3,7 @@ import string
 from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from django.contrib.auth import get_user_model
 from .models import Parche, Membership
 from .serializers import ParcheSerializer, JoinParcheSerializer
 
@@ -51,3 +52,25 @@ class JoinParcheView(APIView):
 
         Membership.objects.create(parche=parche, user=request.user, role='member')
         return Response(ParcheSerializer(parche).data, status=status.HTTP_200_OK)
+    
+
+
+User = get_user_model()
+
+class ParcheMembersView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        miembros = Membership.objects.filter(
+            parche_id=pk
+        ).select_related('user')
+
+        data = [
+            {
+                'id': miembro.user.id,
+                'username': miembro.user.username
+            }
+            for miembro in miembros
+        ]
+
+        return Response(data)
