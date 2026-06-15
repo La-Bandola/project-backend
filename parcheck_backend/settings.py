@@ -74,16 +74,35 @@ WSGI_APPLICATION = 'parcheck_backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('POSTGRES_DB'),
-        'USER': config('POSTGRES_USER'),
-        'PASSWORD': config('POSTGRES_PASSWORD'),
-        'HOST': config('POSTGRES_HOST'),
-        'PORT': config('POSTGRES_PORT'),
+try:
+    import psycopg2  # noqa: F401
+    HAS_POSTGRES_DRIVER = True
+except ImportError:
+    HAS_POSTGRES_DRIVER = False
+
+USE_SQLITE_FOR_TESTS = (
+    not HAS_POSTGRES_DRIVER
+    or os.getenv('PARCHECK_USE_SQLITE', '').lower() in {'1', 'true', 'yes'}
+)
+
+if USE_SQLITE_FOR_TESTS:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': config('POSTGRES_DB'),
+            'USER': config('POSTGRES_USER'),
+            'PASSWORD': config('POSTGRES_PASSWORD'),
+            'HOST': config('POSTGRES_HOST'),
+            'PORT': config('POSTGRES_PORT'),
+        }
+    }
 
 AUTH_USER_MODEL = 'users.User'
 
