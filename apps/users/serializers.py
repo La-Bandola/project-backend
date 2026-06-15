@@ -1,22 +1,23 @@
+from typing import Any, Dict
+
 from rest_framework import serializers
-from .models import User, BankAccount
+
+from .models import BankAccount, User
+from .services import create_bank_account, create_registered_user
+
 
 class RegisterSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(min_length=3)
+    email = serializers.EmailField()
     password = serializers.CharField(write_only=True, min_length=8)
 
     class Meta:
-        model  = User
+        model = User
         fields = ['id', 'username', 'email', 'password', 'nickname', 'bio']
 
-    def create(self, validated_data):
-        user = User.objects.create_user(
-            username=validated_data['username'],
-            email=validated_data.get('email', ''),
-            password=validated_data['password'],
-            nickname=validated_data.get('nickname', ''),
-            bio=validated_data.get('bio', ''),
-        )
-        return user
+    def create(self, validated_data: Dict[str, Any]) -> User:
+        """Create a user through the service layer."""
+        return create_registered_user(validated_data)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -27,7 +28,16 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class BankAccountSerializer(serializers.ModelSerializer):
+    """Validate and persist a user bank account."""
+
+    number = serializers.CharField(min_length=5)
+
     class Meta:
-        model  = BankAccount
+        model = BankAccount
         fields = ['id', 'bank', 'number', 'is_primary', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+    def create(self, validated_data: Dict[str, Any]) -> BankAccount:
+        """Create a bank account through the service layer."""
+        user = self.context['request'].user
+        return create_bank_account(user, validated_data)
