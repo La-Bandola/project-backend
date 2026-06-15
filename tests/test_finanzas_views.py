@@ -37,3 +37,65 @@ class TestDivisionGastos:
         suma   = sum(result.values())
 
         assert suma == Decimal('100000') / 3 * 3 
+
+def calcular_balance(transacciones, user_id):
+
+    pagado   = Decimal('0')
+    recibido = Decimal('0')
+    deudas   = Decimal('0')
+
+    for tx in transacciones:
+        amount = Decimal(str(tx['amount']))
+
+        if tx['type'] == 'pago':
+            if tx['from_user_id'] == user_id:
+                pagado += amount
+            elif tx['to_user_id'] == user_id:
+                recibido += amount
+
+        elif tx['type'] == 'deuda':
+            if tx['from_user_id'] == user_id:
+                deudas += amount
+
+    return {
+        'pagado':   pagado,
+        'recibido': recibido,
+        'deudas':   deudas,
+        'neto':     recibido - pagado - deudas,
+    }
+
+
+class TestBalanceFinanciero:
+
+    def test_balance_neto_con_pagos_en_ambas_direcciones(self):
+        transacciones = [
+            {'from_user_id': 1, 'to_user_id': 2, 'amount': 50000, 'type': 'pago'},
+            {'from_user_id': 2, 'to_user_id': 1, 'amount': 80000, 'type': 'pago'},
+        ]
+        result = calcular_balance(transacciones, user_id=1)
+
+        assert result['pagado']   == Decimal('50000')
+        assert result['recibido'] == Decimal('80000')
+        assert result['neto']     == Decimal('30000')
+
+    def test_balance_neto_cero_cuando_pagado_igual_recibido(self):
+       
+        transacciones = [
+            {'from_user_id': 1, 'to_user_id': 2, 'amount': 50000, 'type': 'pago'},
+            {'from_user_id': 2, 'to_user_id': 1, 'amount': 50000, 'type': 'pago'},
+        ]
+        result = calcular_balance(transacciones, user_id=1)
+
+        assert result['neto'] == Decimal('0')
+
+    def test_deudas_reducen_el_neto(self):
+        
+            transacciones = [
+                {'from_user_id': 2, 'to_user_id': 1, 'amount': 100000, 'type': 'pago'},
+                {'from_user_id': 1, 'to_user_id': 2, 'amount': 40000,  'type': 'deuda'},
+            ]
+            result = calcular_balance(transacciones, user_id=1)
+
+            assert result['recibido'] == Decimal('100000')
+            assert result['deudas']   == Decimal('40000')
+            assert result['neto']     == Decimal('60000')
