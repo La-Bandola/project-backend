@@ -30,3 +30,20 @@ frontend/node_modules/
 backend/__pycache__/
 backend/*.pyc
 postgres_data/
+
+# Python / Django
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# SQLite (solo para desarrollo local, producción usa PostgreSQL)
+db.sqlite3
+
+# Media uploads
+media/

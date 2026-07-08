@@ -1,26 +1,25 @@
+"""
+Settings de desarrollo/tests locales usando SQLite.
+Evita la dependencia de PostgreSQL y psycopg2 para entornos donde
+esos drivers no estén disponibles (ej: Python 3.14 en Windows).
+
+Uso:
+  python manage.py makemigrations --settings=parcheck_backend.settings_test
+  python manage.py migrate        --settings=parcheck_backend.settings_test
+  pytest tests/ -v
+"""
 
 from pathlib import Path
-from decouple import config
-
 import os
-
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+SECRET_KEY  = 'django-insecure-test-key-local-development-only'
+DEBUG       = True
+ALLOWED_HOSTS = ['*']
+
 MEDIA_URL  = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-
-
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('DJANGO_SECRET_KEY')
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DJANGO_DEBUG', cast=bool)
-
-ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS').split(',')
-
-
-# Application definition
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -39,7 +38,6 @@ INSTALLED_APPS = [
     'apps.finanzas',
     'apps.ahorros',
     'apps.soporte',
-
 ]
 
 MIDDLEWARE = [
@@ -73,87 +71,32 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'parcheck_backend.wsgi.application'
 
-
-# Database
-# https://docs.djangoproject.com/en/5.0/ref/settings/#databases
-
-try:
-    import psycopg2  # noqa: F401
-    HAS_POSTGRES_DRIVER = True
-except ImportError:
-    HAS_POSTGRES_DRIVER = False
-
-USE_SQLITE_FOR_TESTS = (
-    not HAS_POSTGRES_DRIVER
-    or os.getenv('PARCHECK_USE_SQLITE', '').lower() in {'1', 'true', 'yes'}
-)
-
-if USE_SQLITE_FOR_TESTS:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
+# SQLite – sin dependencias externas
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': config('POSTGRES_DB'),
-            'USER': config('POSTGRES_USER'),
-            'PASSWORD': config('POSTGRES_PASSWORD'),
-            'HOST': config('POSTGRES_HOST'),
-            'PORT': config('POSTGRES_PORT'),
-        }
-    }
+}
 
 AUTH_USER_MODEL = 'users.User'
 
-
-# Password validation
-# https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
-
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-
-# Internationalization
-# https://docs.djangoproject.com/en/5.0/topics/i18n/
-
-LANGUAGE_CODE = 'en-us'
-
-TIME_ZONE = 'UTC'
-
-USE_I18N = True
-
-USE_TZ = True
-
-
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.0/howto/static-files/
+LANGUAGE_CODE = 'es-co'
+TIME_ZONE     = 'America/Bogota'
+USE_I18N      = True
+USE_TZ        = True
 
 STATIC_URL = 'static/'
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-]
+CORS_ALLOWED_ORIGINS = ['http://localhost:5173']
 
 from datetime import timedelta
 
@@ -176,10 +119,9 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME':  timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'ROTATE_REFRESH_TOKENS':  True,
+    'ACCESS_TOKEN_LIFETIME':    timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME':   timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS':    True,
     'BLACKLIST_AFTER_ROTATION': True,
-    'UPDATE_LAST_LOGIN': True,
+    'UPDATE_LAST_LOGIN':        True,
 }
-
