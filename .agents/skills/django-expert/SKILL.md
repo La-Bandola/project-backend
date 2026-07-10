@@ -147,7 +147,7 @@ You MUST respect the strict dependency flow of the project's architecture:
 - Follow PEP 8 and Django coding style; format with `black`/`ruff`
 - **MUST:** Keep functions/classes small and focused on a Single Responsibility (SRP). Extract helpers for repeated logic (DRY).
 - **MUST:** Keep views and serializers "thin". Business logic MUST be placed in `services.py` or custom model managers.
-- **MUST:** Use intention-revealing names for variables, functions, and classes. Avoid abbreviations.
+- **MUST:** Use intention-revealing names for variables, functions, and classes. Avoid abbreviations and use only ENGLISH for all identifiers.
 - **MUST:** Avoid magic numbers/strings. Extract them to constants, `TextChoices`, or `IntegerChoices`.
 - **MUST:** Document your code. Write clear Docstrings for all classes, public API methods, and services describing their purpose, args, and returns.
 - **MUST:** Handle errors gracefully with specific exceptions; never use bare `except:`.
@@ -285,7 +285,7 @@ These reference files provide detailed guidance beyond this SKILL.md overview:
 
 At the end of every response, you must provide a concise quality checklist using ✅ (Green/Pass) or ❌ (Red/Fail or Needs Attention) evaluating the provided solution against these core requirements:
 
-- ✅/❌ **MUST: Clean Code & SRP:** Functions/classes are small, single-purpose, and use descriptive names without magic numbers.
+- ✅/❌ **MUST: Clean Code & SRP:** Functions/classes are small, single-purpose, and use descriptive names without magic numbers, variables are clear and well-named, only in english.
 - ✅/❌ **MUST: Architecture (Service Layer):** Business logic is strictly isolated in services, keeping views/serializers thin.
 - ✅/❌ **MUST: Performance & ORM:** Avoids N+1 queries (uses `select_related`/`prefetch_related` appropriately).
 - ✅/❌ **MUST: Security & Validation:** Inputs are validated and secure access controls/permissions are applied.
