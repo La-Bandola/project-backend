@@ -91,7 +91,9 @@ class BankAccountListCreateView(generics.ListCreateAPIView):
         return BankAccount.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        # El BankAccountSerializer.create() ya obtiene el user desde
+        # self.context['request'].user — no se pasa como kwarg para evitar duplicados.
+        serializer.save()
 
 
 class BankAccountDetailView(generics.RetrieveUpdateDestroyAPIView):
