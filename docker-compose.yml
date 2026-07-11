@@ -1,4 +1,17 @@
-services:
+# =============================================================================
+# ⚠️  ARCHIVO DEPRECADO — No usar este docker-compose directamente.
+#
+# Este archivo solo levanta el backend + base de datos de forma aislada.
+# Para desarrollo normal del proyecto, usa el docker-compose.yml de la raíz:
+#
+#   cd ..         (sube a la carpeta Parcheck/)
+#   docker-compose up --build
+#
+# Este archivo puede ser útil únicamente si necesitas correr el backend
+# sin el frontend (por ejemplo, para ejecutar pruebas de API).
+# =============================================================================
+
+
   db:
     image: postgres:15-alpine
     restart: unless-stopped
