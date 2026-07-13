@@ -26,6 +26,11 @@ class UserSerializer(serializers.ModelSerializer):
         model            = User
         fields           = ['id', 'username', 'email', 'nickname', 'bio', 'photo']
         read_only_fields = ['id', 'username']
+    
+    def get_photo(self, obj):
+        if not obj.photo:
+            return None
+        return obj.photo.url  # devuelve solo "/media/profiles/foto.jpg"
 
 
 class BankAccountSerializer(serializers.ModelSerializer):
