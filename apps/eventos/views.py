@@ -43,7 +43,21 @@ class MarcarPagadoView(generics.UpdateAPIView):
         return EventoParticipant.objects.filter(user=self.request.user)
 
     def perform_update(self, serializer):
-        serializer.save(paid=True, paid_at=timezone.now())
+        participant = serializer.save(paid=True, paid_at=timezone.now())
+        
+        # Registrar el pago en el libro mayor (Tabla Transaccion)
+        from apps.finanzas.models import Transaccion
+        evento = participant.evento
+        
+        if participant.user != evento.responsible and evento.responsible is not None:
+            Transaccion.objects.create(
+                parche=evento.parche,
+                from_user=participant.user,
+                to_user=evento.responsible,
+                amount=participant.amount_owed,
+                type='pago',
+                concept=f"Evento: {evento.name}"
+            )
 
 
 class UploadPaymentProofView(APIView):
