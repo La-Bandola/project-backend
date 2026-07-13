@@ -62,6 +62,7 @@ class EventoSerializer(serializers.ModelSerializer):
 
         if participant_ids:
             from apps.users.models import User
+            from django.utils import timezone
             count = len(participant_ids)
             for uid in participant_ids:
                 user = User.objects.get(id=uid)
@@ -71,30 +72,18 @@ class EventoSerializer(serializers.ModelSerializer):
                     amount = custom_amounts.get(str(uid), 0)
                 else:
                     amount = 0
+                
+                is_responsible = (evento.responsible is not None and user.id == evento.responsible.id)
                 EventoParticipant.objects.create(
-                    evento=evento, user=user, amount_owed=amount
+                    evento=evento, 
+                    user=user, 
+                    amount_owed=amount,
+                    paid=is_responsible,
+                    paid_at=timezone.now() if is_responsible else None
                 )
 
         return evento
 
-        # RF_14 / RF_26 – cálculo automático de montos
-        if participant_ids:
-            from apps.users.models import User
-            split_type = evento.split_type
-            count      = len(participant_ids)
-            for uid in participant_ids:
-                user = User.objects.get(id=uid)
-                if split_type == 'equal':
-                    amount = evento.total_amount / count
-                elif split_type == 'custom':
-                    amount = custom_amounts.get(str(uid), 0)
-                else:
-                    amount = 0
-                EventoParticipant.objects.create(
-                    evento=evento, user=user, amount_owed=amount
-                )
-
-        return evento
 
     def update(self, instance, validated_data):
         participant_ids = validated_data.pop('participant_ids', None)
@@ -110,6 +99,7 @@ class EventoSerializer(serializers.ModelSerializer):
 
         if participant_ids is not None:
             from apps.users.models import User
+            from django.utils import timezone
             instance.participants.all().delete()
             count = len(participant_ids)
             for uid in participant_ids:
@@ -120,8 +110,14 @@ class EventoSerializer(serializers.ModelSerializer):
                     amount = custom_amounts.get(str(uid), 0)
                 else:
                     amount = 0
+                
+                is_responsible = (instance.responsible is not None and user.id == instance.responsible.id)
                 EventoParticipant.objects.create(
-                    evento=instance, user=user, amount_owed=amount
+                    evento=instance, 
+                    user=user, 
+                    amount_owed=amount,
+                    paid=is_responsible,
+                    paid_at=timezone.now() if is_responsible else None
                 )
 
         return instance
