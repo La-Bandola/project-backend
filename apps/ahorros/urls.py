@@ -7,5 +7,5 @@ urlpatterns = [
     path('<int:parche_id>/ahorros/<int:pk>/', EspacioAhorroDetailView.as_view(),     name='ahorro_detail'),
 
     # Aportes a un espacio (RF_20)
-    path('ahorros/<int:espacio_id>/aportar/', AporteAhorroCreateView.as_view(),      name='ahorro_aportar'),
+    path('<int:espacio_id>/aportar/', AporteAhorroCreateView.as_view(),      name='ahorro_aportar'),
 ]

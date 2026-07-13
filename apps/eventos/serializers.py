@@ -53,10 +53,10 @@ class EventoSerializer(serializers.ModelSerializer):
                 float(custom_amounts.get(str(uid), 0))
                 for uid in participant_ids
             )
-        if round(suma, 2) != round(float(total), 2):
-            raise serializers.ValidationError({
-                'custom_amounts': f'Los montos asignados ${suma:,.0f} no suman el total del evento ${float(total):,.0f}'
-            })
+            if round(suma, 2) != round(float(total), 2):
+                raise serializers.ValidationError({
+                    'custom_amounts': f'Los montos asignados ${suma:,.0f} no suman el total del evento ${float(total):,.0f}'
+                })
 
         evento = Evento.objects.create(**validated_data)
 

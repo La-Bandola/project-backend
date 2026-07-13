@@ -85,9 +85,18 @@ class BalancePersonalView(APIView):
             Transaccion.objects.filter(parche_id=parche_id, to_user=user, type='pago')
         ).aggregate(total=Sum('amount'))['total'] or 0
 
-        deudas = apply_date_filters(
+        deudas_tx = apply_date_filters(
             Transaccion.objects.filter(parche_id=parche_id, from_user=user, type='deuda')
         ).aggregate(total=Sum('amount'))['total'] or 0
+
+        qs_evt = EventoParticipant.objects.filter(evento__parche_id=parche_id, user=user, paid=False)
+        if year:
+            qs_evt = qs_evt.filter(evento__created_at__year=year)
+        if month:
+            qs_evt = qs_evt.filter(evento__created_at__month=month)
+        deudas_evt = qs_evt.aggregate(total=Sum('amount_owed'))['total'] or 0
+
+        deudas = deudas_tx + deudas_evt
 
         return Response({
             'pagado':   enviado,
@@ -117,7 +126,16 @@ class BalanceMensualView(APIView):
 
         enviado  = qs.filter(from_user=user, type='pago').aggregate(t=Sum('amount'))['t'] or 0
         recibido = qs.filter(to_user=user,   type='pago').aggregate(t=Sum('amount'))['t'] or 0
-        deudas   = qs.filter(from_user=user, type='deuda').aggregate(t=Sum('amount'))['t'] or 0
+        deudas_tx = qs.filter(from_user=user, type='deuda').aggregate(t=Sum('amount'))['t'] or 0
+        
+        qs_evt = EventoParticipant.objects.filter(user=user, paid=False)
+        if year:
+            qs_evt = qs_evt.filter(evento__created_at__year=year)
+        if month:
+            qs_evt = qs_evt.filter(evento__created_at__month=month)
+        deudas_evt = qs_evt.aggregate(t=Sum('amount_owed'))['t'] or 0
+
+        deudas = deudas_tx + deudas_evt
 
         return Response({
             'year':     year,
@@ -152,6 +170,26 @@ class ResumenMutuoView(APIView):
                 otro = tx.from_user
                 resumen.setdefault(otro.username, 0)
                 resumen[otro.username] += float(tx.amount)
+
+        # Agregar deudas de eventos
+        participaciones = EventoParticipant.objects.filter(
+            evento__parche_id=parche_id, paid=False
+        ).filter(
+            Q(user=user) | Q(evento__responsible=user)
+        ).select_related('user', 'evento__responsible')
+
+        for p in participaciones:
+            # Si el usuario es quien debe
+            if p.user == user and p.evento.responsible and p.evento.responsible != user:
+                otro = p.evento.responsible
+                resumen.setdefault(otro.username, 0)
+                resumen[otro.username] -= float(p.amount_owed)
+            
+            # Si al usuario le deben (es el responsable del evento)
+            if p.evento.responsible == user and p.user != user:
+                otro = p.user
+                resumen.setdefault(otro.username, 0)
+                resumen[otro.username] += float(p.amount_owed)
 
         return Response(resumen)
 
