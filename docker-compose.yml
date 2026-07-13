@@ -1,19 +1,6 @@
-# =============================================================================
-# ⚠️  ARCHIVO DEPRECADO — No usar este docker-compose directamente.
-#
-# Este archivo solo levanta el backend + base de datos de forma aislada.
-# Para desarrollo normal del proyecto, usa el docker-compose.yml de la raíz:
-#
-#   cd ..         (sube a la carpeta Parcheck/)
-#   docker-compose up --build
-#
-# Este archivo puede ser útil únicamente si necesitas correr el backend
-# sin el frontend (por ejemplo, para ejecutar pruebas de API).
-# =============================================================================
-
-
+services:
   db:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     restart: unless-stopped
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -32,13 +19,13 @@
       retries: 5
 
   backend:
-    build: .
+    build: ./project-backend
     restart: unless-stopped
     command: >
       sh -c "python manage.py migrate --no-input &&
              python manage.py runserver 0.0.0.0:8000"
     volumes:
-      - .:/app
+      - ./project-backend:/app
       - media_data:/app/media
     ports:
       - "8000:8000"
@@ -47,6 +34,16 @@
     depends_on:
       db:
         condition: service_healthy
+  frontend:
+    build: ./project-frontend
+    command: npm run dev -- --host
+    volumes:
+      - ./project-frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:
