@@ -58,6 +58,17 @@ class AporteAhorroCreateView(APIView):
             espacio.current_amount = espacio.current_amount + amount
             espacio.save(update_fields=['current_amount'])
 
+            from apps.finanzas.models import Transaccion
+            if request.user != espacio.creator:
+                Transaccion.objects.create(
+                    parche=espacio.parche,
+                    from_user=request.user,
+                    to_user=espacio.creator,
+                    amount=amount,
+                    type='pago',
+                    concept=f"Ahorro: {espacio.name}"
+                )
+
         return Response(
             AporteAhorroSerializer(aporte).data,
             status=status.HTTP_201_CREATED
