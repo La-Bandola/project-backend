@@ -19,10 +19,11 @@ class EventoSerializer(serializers.ModelSerializer):
     participant_ids   = serializers.ListField(
         child=serializers.IntegerField(), write_only=True, required=False
     )
-    custom_amounts = serializers.DictField(
+    custom_amounts = serializers.DictField(    
         child=serializers.DecimalField(max_digits=12, decimal_places=2),
-        write_only=True, required=False,
-        help_text="Mapa user_id -> monto para split_type='custom' (RF_14)"
+        write_only=True,
+        required=False,
+        default=dict
     )
 
     class Meta:
@@ -45,12 +46,36 @@ class EventoSerializer(serializers.ModelSerializer):
         if responsible_id:
             from apps.users.models import User
             validated_data['responsible'] = User.objects.get(id=responsible_id)
-
-        # RF_16: si pay_immediately=False, el estado inicia en 'waiting'
-        if not validated_data.get('pay_immediately', True):
-            validated_data['status'] = 'waiting'
+            
+        if validated_data.get('split_type') == 'custom' and participant_ids:
+            total = validated_data.get('total_amount', 0)
+            suma  = sum(
+                float(custom_amounts.get(str(uid), 0))
+                for uid in participant_ids
+            )
+        if round(suma, 2) != round(float(total), 2):
+            raise serializers.ValidationError({
+                'custom_amounts': f'Los montos asignados ${suma:,.0f} no suman el total del evento ${float(total):,.0f}'
+            })
 
         evento = Evento.objects.create(**validated_data)
+
+        if participant_ids:
+            from apps.users.models import User
+            count = len(participant_ids)
+            for uid in participant_ids:
+                user = User.objects.get(id=uid)
+                if evento.split_type == 'equal':
+                    amount = evento.total_amount / count
+                elif evento.split_type == 'custom':
+                    amount = custom_amounts.get(str(uid), 0)
+                else:
+                    amount = 0
+                EventoParticipant.objects.create(
+                    evento=evento, user=user, amount_owed=amount
+                )
+
+        return evento
 
         # RF_14 / RF_26 – cálculo automático de montos
         if participant_ids:
