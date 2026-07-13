@@ -3,13 +3,18 @@ from .views import (
     TransaccionListCreateView, TransaccionDetailView,
     BalanceParcheView, BalancePersonalView,
     BalanceMensualView, ResumenMutuoView,
-    BoletinInicioView
+    BoletinInicioView, TransaccionGlobalListView,
+    TransaccionUpdateView
 )
 
 urlpatterns = [
     # Historial de transacciones (RF_27, RF_28, RF_29)
     path('<int:parche_id>/transacciones/',          TransaccionListCreateView.as_view(), name='transaccion_list'),
     path('<int:parche_id>/transacciones/<int:pk>/', TransaccionDetailView.as_view(),     name='transaccion_detail'),
+    
+    # Historial global y edición global (RF_27, RF_28)
+    path('historial-global/',                       TransaccionGlobalListView.as_view(), name='transaccion_global_list'),
+    path('transacciones/<int:pk>/',                 TransaccionUpdateView.as_view(),     name='transaccion_update'),
 
     # Balance por parche (RF_23)
     path('<int:parche_id>/balance/',                BalanceParcheView.as_view(),         name='balance_parche'),

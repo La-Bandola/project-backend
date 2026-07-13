@@ -6,6 +6,7 @@ from .models import Transaccion, Balance
 from .serializers import TransaccionSerializer, BalanceSerializer
 from apps.parches.models import Parche, Membership
 from apps.eventos.models import EventoParticipant
+from apps.ahorros.models import AporteAhorro
 
 
 class TransaccionListCreateView(generics.ListCreateAPIView):
@@ -38,13 +39,35 @@ class TransaccionListCreateView(generics.ListCreateAPIView):
 
 
 class TransaccionDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """RF_28 – Editar o eliminar una transacción."""
+    """RF_28 – Editar o eliminar una transacción dentro del contexto de un parche."""
     serializer_class   = TransaccionSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         return Transaccion.objects.filter(
             parche__memberships__user=self.request.user
+        )
+
+
+class TransaccionGlobalListView(generics.ListAPIView):
+    """Historial global de todas las transacciones del usuario en todos los parches."""
+    serializer_class   = TransaccionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Transaccion.objects.filter(
+            Q(from_user=self.request.user) | Q(to_user=self.request.user)
+        ).select_related('from_user', 'to_user', 'parche').order_by('-created_at')
+
+
+class TransaccionUpdateView(generics.RetrieveUpdateDestroyAPIView):
+    """Editar o eliminar cualquier transacción global manual."""
+    serializer_class   = TransaccionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Transaccion.objects.filter(
+            Q(from_user=self.request.user) | Q(to_user=self.request.user)
         )
 
 
@@ -66,37 +89,47 @@ class BalancePersonalView(APIView):
     def get(self, request, parche_id):
         user = request.user
 
-        # Filtros opcionales por mes: ?year=2025&month=6
         year  = request.query_params.get('year')
         month = request.query_params.get('month')
 
-        def apply_date_filters(qs):
-            if year:
-                qs = qs.filter(created_at__year=year)
-            if month:
-                qs = qs.filter(created_at__month=month)
+        # Funciones auxiliares para filtrar por fecha
+        def tx_filter(qs):
+            if year: qs = qs.filter(created_at__year=year)
+            if month: qs = qs.filter(created_at__month=month)
             return qs
 
-        enviado = apply_date_filters(
-            Transaccion.objects.filter(parche_id=parche_id, from_user=user, type='pago')
-        ).aggregate(total=Sum('amount'))['total'] or 0
+        def evt_filter(qs):
+            if year: qs = qs.filter(paid_at__year=year) if hasattr(qs.model, 'paid_at') else qs.filter(evento__created_at__year=year)
+            if month: qs = qs.filter(paid_at__month=month) if hasattr(qs.model, 'paid_at') else qs.filter(evento__created_at__month=month)
+            return qs
 
-        recibido = apply_date_filters(
-            Transaccion.objects.filter(parche_id=parche_id, to_user=user, type='pago')
-        ).aggregate(total=Sum('amount'))['total'] or 0
+        def ahorro_filter(qs):
+            if year: qs = qs.filter(created_at__year=year)
+            if month: qs = qs.filter(created_at__month=month)
+            return qs
 
-        deudas_tx = apply_date_filters(
-            Transaccion.objects.filter(parche_id=parche_id, from_user=user, type='deuda')
-        ).aggregate(total=Sum('amount'))['total'] or 0
+        # 1. Pagado (TX manuales + Eventos Pagados + Aportes a ahorros)
+        enviado_tx = tx_filter(Transaccion.objects.filter(parche_id=parche_id, from_user=user, type='pago')).aggregate(t=Sum('amount'))['t'] or 0
+        enviado_evt = evt_filter(EventoParticipant.objects.filter(evento__parche_id=parche_id, user=user, paid=True)).aggregate(t=Sum('amount_owed'))['t'] or 0
+        enviado_ahorro = ahorro_filter(AporteAhorro.objects.filter(espacio__parche_id=parche_id, user=user)).aggregate(t=Sum('amount'))['t'] or 0
+        
+        enviado = float(enviado_tx) + float(enviado_evt) + float(enviado_ahorro)
 
-        qs_evt = EventoParticipant.objects.filter(evento__parche_id=parche_id, user=user, paid=False)
-        if year:
-            qs_evt = qs_evt.filter(evento__created_at__year=year)
-        if month:
-            qs_evt = qs_evt.filter(evento__created_at__month=month)
-        deudas_evt = qs_evt.aggregate(total=Sum('amount_owed'))['total'] or 0
+        # 2. Recibido (TX manuales + Eventos donde usuario es responsable y alguien ya pagó)
+        recibido_tx = tx_filter(Transaccion.objects.filter(parche_id=parche_id, to_user=user, type='pago')).aggregate(t=Sum('amount'))['t'] or 0
+        recibido_evt = evt_filter(EventoParticipant.objects.filter(evento__parche_id=parche_id, evento__responsible=user, paid=True).exclude(user=user)).aggregate(t=Sum('amount_owed'))['t'] or 0
+        
+        recibido = float(recibido_tx) + float(recibido_evt)
 
-        deudas = deudas_tx + deudas_evt
+        # 3. Deudas (TX manuales + Eventos No Pagados)
+        deudas_tx = tx_filter(Transaccion.objects.filter(parche_id=parche_id, from_user=user, type='deuda')).aggregate(t=Sum('amount'))['t'] or 0
+        
+        qs_evt_deuda = EventoParticipant.objects.filter(evento__parche_id=parche_id, user=user, paid=False)
+        if year: qs_evt_deuda = qs_evt_deuda.filter(evento__created_at__year=year)
+        if month: qs_evt_deuda = qs_evt_deuda.filter(evento__created_at__month=month)
+        deudas_evt = qs_evt_deuda.aggregate(t=Sum('amount_owed'))['t'] or 0
+        
+        deudas = float(deudas_tx) + float(deudas_evt)
 
         return Response({
             'pagado':   enviado,
@@ -115,27 +148,41 @@ class BalanceMensualView(APIView):
         year  = request.query_params.get('year')
         month = request.query_params.get('month')
 
-        qs = Transaccion.objects.filter(
-            Q(from_user=user) | Q(to_user=user)
-        )
+        def tx_filter(qs):
+            if year: qs = qs.filter(created_at__year=year)
+            if month: qs = qs.filter(created_at__month=month)
+            return qs
+            
+        def evt_filter(qs, is_debt=False):
+            if is_debt:
+                if year: qs = qs.filter(evento__created_at__year=year)
+                if month: qs = qs.filter(evento__created_at__month=month)
+            else:
+                if year: qs = qs.filter(paid_at__year=year)
+                if month: qs = qs.filter(paid_at__month=month)
+            return qs
+            
+        def ahorro_filter(qs):
+            if year: qs = qs.filter(created_at__year=year)
+            if month: qs = qs.filter(created_at__month=month)
+            return qs
 
-        if year:
-            qs = qs.filter(created_at__year=year)
-        if month:
-            qs = qs.filter(created_at__month=month)
+        # TX Manuales
+        enviado_tx  = tx_filter(Transaccion.objects.filter(from_user=user, type='pago')).aggregate(t=Sum('amount'))['t'] or 0
+        recibido_tx = tx_filter(Transaccion.objects.filter(to_user=user, type='pago')).aggregate(t=Sum('amount'))['t'] or 0
+        deudas_tx   = tx_filter(Transaccion.objects.filter(from_user=user, type='deuda')).aggregate(t=Sum('amount'))['t'] or 0
 
-        enviado  = qs.filter(from_user=user, type='pago').aggregate(t=Sum('amount'))['t'] or 0
-        recibido = qs.filter(to_user=user,   type='pago').aggregate(t=Sum('amount'))['t'] or 0
-        deudas_tx = qs.filter(from_user=user, type='deuda').aggregate(t=Sum('amount'))['t'] or 0
-        
-        qs_evt = EventoParticipant.objects.filter(user=user, paid=False)
-        if year:
-            qs_evt = qs_evt.filter(evento__created_at__year=year)
-        if month:
-            qs_evt = qs_evt.filter(evento__created_at__month=month)
-        deudas_evt = qs_evt.aggregate(t=Sum('amount_owed'))['t'] or 0
+        # Eventos
+        enviado_evt  = evt_filter(EventoParticipant.objects.filter(user=user, paid=True)).aggregate(t=Sum('amount_owed'))['t'] or 0
+        recibido_evt = evt_filter(EventoParticipant.objects.filter(evento__responsible=user, paid=True).exclude(user=user)).aggregate(t=Sum('amount_owed'))['t'] or 0
+        deudas_evt   = evt_filter(EventoParticipant.objects.filter(user=user, paid=False), True).aggregate(t=Sum('amount_owed'))['t'] or 0
 
-        deudas = deudas_tx + deudas_evt
+        # Ahorros
+        enviado_ahorro = ahorro_filter(AporteAhorro.objects.filter(user=user)).aggregate(t=Sum('amount'))['t'] or 0
+
+        enviado  = float(enviado_tx) + float(enviado_evt) + float(enviado_ahorro)
+        recibido = float(recibido_tx) + float(recibido_evt)
+        deudas   = float(deudas_tx) + float(deudas_evt)
 
         return Response({
             'year':     year,
@@ -201,32 +248,21 @@ class BoletinInicioView(APIView):
     def get(self, request):
         user = request.user
 
-        # Total pagado y recibido globalmente
-        total_pagado = Transaccion.objects.filter(
-            from_user=user, type='pago'
-        ).aggregate(t=Sum('amount'))['t'] or 0
+        pagado_tx = Transaccion.objects.filter(from_user=user, type='pago').aggregate(t=Sum('amount'))['t'] or 0
+        pagado_evt = EventoParticipant.objects.filter(user=user, paid=True).aggregate(t=Sum('amount_owed'))['t'] or 0
+        pagado_aho = AporteAhorro.objects.filter(user=user).aggregate(t=Sum('amount'))['t'] or 0
+        total_pagado = float(pagado_tx) + float(pagado_evt) + float(pagado_aho)
 
-        total_recibido = Transaccion.objects.filter(
-            to_user=user, type='pago'
-        ).aggregate(t=Sum('amount'))['t'] or 0
+        recibido_tx = Transaccion.objects.filter(to_user=user, type='pago').aggregate(t=Sum('amount'))['t'] or 0
+        recibido_evt = EventoParticipant.objects.filter(evento__responsible=user, paid=True).exclude(user=user).aggregate(t=Sum('amount_owed'))['t'] or 0
+        total_recibido = float(recibido_tx) + float(recibido_evt)
 
-        total_deudas = Transaccion.objects.filter(
-            from_user=user, type='deuda'
-        ).aggregate(t=Sum('amount'))['t'] or 0
-
-        # Deudas pendientes de eventos (RF_22)
-        deudas_pendientes = EventoParticipant.objects.filter(
-            user=user, paid=False
-        ).aggregate(t=Sum('amount_owed'))['t'] or 0
-
-        # Número de parches activos
+        saldo_neto = total_recibido - total_pagado
         num_parches = Membership.objects.filter(user=user).count()
 
         return Response({
-            'total_pagado':             total_pagado,
-            'total_recibido':           total_recibido,
-            'total_deudas_transaccion': total_deudas,
-            'deudas_pendientes_eventos': deudas_pendientes,
-            'saldo_neto':               total_recibido - total_pagado - total_deudas,
-            'num_parches':              num_parches,
+            'total_pagado':   total_pagado,
+            'total_recibido': total_recibido,
+            'saldo_neto':     saldo_neto,
+            'num_parches':    num_parches,
         })
