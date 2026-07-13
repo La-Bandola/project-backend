@@ -50,16 +50,33 @@ class ParcheMembersView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, pk):
+        from apps.users.models import BankAccount
+
         miembros = Membership.objects.filter(
             parche_id=pk
         ).select_related('user')
 
-        data = [
-            {
-                'id': miembro.user.id,
-                'username': miembro.user.username
-            }
-            for miembro in miembros
-        ]
+        # Obtener cuentas principales de todos los miembros en una sola query
+        user_ids = [m.user.id for m in miembros]
+        cuentas_principales = {
+            c.user_id: c
+            for c in BankAccount.objects.filter(
+                user_id__in=user_ids, is_primary=True
+            )
+        }
 
-        return Response(data)
+        data = []
+        for miembro in miembros:
+            cuenta = cuentas_principales.get(miembro.user.id)
+            data.append({
+                'id':       miembro.user.id,
+                'username': miembro.user.username,
+                'nickname': miembro.user.nickname or None,
+                'photo':    request.build_absolute_uri(miembro.user.photo.url) if miembro.user.photo else None,
+                'cuenta_principal': {
+                    'bank':   cuenta.bank,
+                    'number': cuenta.number,
+                } if cuenta else None,
+            })
+
+        return Response(data)
