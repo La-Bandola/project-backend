@@ -1,7 +1,8 @@
 from rest_framework import generics, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from django.db.models import Sum, Q
+from django.db.models import Sum, Q, F, DecimalField
+from django.db.models.functions import Coalesce
 from .models import Transaccion, Balance
 from .serializers import TransaccionSerializer, BalanceSerializer
 from apps.parches.models import Parche, Membership
@@ -99,14 +100,31 @@ class BalancePersonalView(APIView):
 
         enviado = tx_filter(Transaccion.objects.filter(parche_id=parche_id, from_user=user, type='pago')).aggregate(t=Sum('amount'))['t'] or 0
         recibido = tx_filter(Transaccion.objects.filter(parche_id=parche_id, to_user=user, type='pago')).aggregate(t=Sum('amount'))['t'] or 0
+        
         deudas_tx = tx_filter(Transaccion.objects.filter(parche_id=parche_id, from_user=user, type='deuda')).aggregate(t=Sum('amount'))['t'] or 0
         
-        qs_evt_deuda = EventoParticipant.objects.filter(evento__parche_id=parche_id, user=user, paid=False)
+        qs_evt_deuda = EventoParticipant.objects.filter(
+            ~Q(user=F('evento__responsible')),
+            evento__parche_id=parche_id, user=user
+        )
         if year: qs_evt_deuda = qs_evt_deuda.filter(evento__created_at__year=year)
         if month: qs_evt_deuda = qs_evt_deuda.filter(evento__created_at__month=month)
-        deudas_evt = qs_evt_deuda.aggregate(t=Sum('amount_owed'))['t'] or 0
         
-        deudas = float(deudas_tx) + float(deudas_evt)
+        qs_evt_deuda = qs_evt_deuda.annotate(
+            amount_paid_calc=Coalesce(
+                Sum(
+                    'user__transacciones_enviadas__amount',
+                    filter=Q(
+                        user__transacciones_enviadas__evento=F('evento'),
+                        user__transacciones_enviadas__type='pago'
+                    )
+                ), 0.0, output_field=DecimalField()
+            )
+        ).filter(amount_owed__gt=F('amount_paid_calc'))
+        
+        deudas_evt = sum(float(p.amount_owed) - float(p.amount_paid_calc) for p in qs_evt_deuda)
+        
+        deudas = float(deudas_tx) + deudas_evt
 
         return Response({
             'pagado':   float(enviado),
@@ -132,14 +150,31 @@ class BalanceMensualView(APIView):
 
         enviado  = tx_filter(Transaccion.objects.filter(from_user=user, type='pago')).aggregate(t=Sum('amount'))['t'] or 0
         recibido = tx_filter(Transaccion.objects.filter(to_user=user, type='pago')).aggregate(t=Sum('amount'))['t'] or 0
+        
         deudas_tx   = tx_filter(Transaccion.objects.filter(from_user=user, type='deuda')).aggregate(t=Sum('amount'))['t'] or 0
 
-        qs_evt_deuda = EventoParticipant.objects.filter(user=user, paid=False)
+        qs_evt_deuda = EventoParticipant.objects.filter(
+            ~Q(user=F('evento__responsible')),
+            user=user
+        )
         if year: qs_evt_deuda = qs_evt_deuda.filter(evento__created_at__year=year)
         if month: qs_evt_deuda = qs_evt_deuda.filter(evento__created_at__month=month)
-        deudas_evt = qs_evt_deuda.aggregate(t=Sum('amount_owed'))['t'] or 0
+        
+        qs_evt_deuda = qs_evt_deuda.annotate(
+            amount_paid_calc=Coalesce(
+                Sum(
+                    'user__transacciones_enviadas__amount',
+                    filter=Q(
+                        user__transacciones_enviadas__evento=F('evento'),
+                        user__transacciones_enviadas__type='pago'
+                    )
+                ), 0.0, output_field=DecimalField()
+            )
+        ).filter(amount_owed__gt=F('amount_paid_calc'))
+        
+        deudas_evt = sum(float(p.amount_owed) - float(p.amount_paid_calc) for p in qs_evt_deuda)
 
-        deudas   = float(deudas_tx) + float(deudas_evt)
+        deudas   = float(deudas_tx) + deudas_evt
         enviado  = float(enviado)
         recibido = float(recibido)
 
@@ -179,23 +214,34 @@ class ResumenMutuoView(APIView):
 
         # Agregar deudas de eventos
         participaciones = EventoParticipant.objects.filter(
-            evento__parche_id=parche_id, paid=False
+            evento__parche_id=parche_id
         ).filter(
             Q(user=user) | Q(evento__responsible=user)
-        ).select_related('user', 'evento__responsible')
+        ).select_related('user', 'evento__responsible').annotate(
+            amount_paid_calc=Coalesce(
+                Sum(
+                    'user__transacciones_enviadas__amount',
+                    filter=Q(
+                        user__transacciones_enviadas__evento=F('evento'),
+                        user__transacciones_enviadas__type='pago'
+                    )
+                ), 0.0, output_field=DecimalField()
+            )
+        ).filter(amount_owed__gt=F('amount_paid_calc'))
 
         for p in participaciones:
+            deuda_restante = float(p.amount_owed) - float(p.amount_paid_calc)
             # Si el usuario es quien debe
             if p.user == user and p.evento.responsible and p.evento.responsible != user:
                 otro = p.evento.responsible
                 resumen.setdefault(otro.username, 0)
-                resumen[otro.username] -= float(p.amount_owed)
+                resumen[otro.username] -= deuda_restante
             
             # Si al usuario le deben (es el responsable del evento)
             if p.evento.responsible == user and p.user != user:
                 otro = p.user
                 resumen.setdefault(otro.username, 0)
-                resumen[otro.username] += float(p.amount_owed)
+                resumen[otro.username] += deuda_restante
 
         return Response(resumen)
 

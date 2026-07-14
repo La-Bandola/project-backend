@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
     EventoListCreateView, EventoDetailView,
-    MarcarPagadoView, UploadPaymentProofView,
+    PagarEventoView, UploadPaymentProofView,
     PendingDebtsView,
     SuscripcionListCreateView, SuscripcionDetailView
 )
@@ -12,7 +12,7 @@ urlpatterns = [
     path('<int:parche_id>/eventos/<int:pk>/', EventoDetailView.as_view(),        name='evento_detail'),
 
     # Participantes
-    path('participantes/<int:pk>/pagar/',    MarcarPagadoView.as_view(),         name='marcar_pagado'),
+    path('participantes/<int:pk>/pagar/',    PagarEventoView.as_view(),         name='marcar_pagado'),
     path('participantes/<int:pk>/soporte/',  UploadPaymentProofView.as_view(),   name='upload_proof'),  # RF_32
 
     # Deudas pendientes (RF_22)

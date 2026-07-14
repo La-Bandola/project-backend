@@ -12,9 +12,11 @@ class Transaccion(models.Model):
     parche      = models.ForeignKey(Parche, on_delete=models.CASCADE, related_name='transacciones')
     from_user   = models.ForeignKey(User, on_delete=models.CASCADE, related_name='transacciones_enviadas')
     to_user     = models.ForeignKey(User, on_delete=models.CASCADE, related_name='transacciones_recibidas')
+    evento      = models.ForeignKey('eventos.Evento', on_delete=models.SET_NULL, null=True, blank=True, related_name='pagos')
     amount      = models.DecimalField(max_digits=12, decimal_places=2)
     type        = models.CharField(max_length=10, choices=TYPE_CHOICES)
     concept     = models.CharField(max_length=200, blank=True)
+    destination_account = models.CharField(max_length=100, blank=True)
     created_at  = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

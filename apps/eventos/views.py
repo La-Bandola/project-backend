@@ -34,30 +34,41 @@ class EventoDetailView(generics.RetrieveUpdateDestroyAPIView):
         )
 
 
-class MarcarPagadoView(generics.UpdateAPIView):
-    """RF_15 – Marcar la participación de un usuario como pagada."""
-    serializer_class   = EventoParticipantSerializer
+class PagarEventoView(APIView):
+    """Realizar un pago (parcial o total) para un evento."""
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
-        return EventoParticipant.objects.filter(user=self.request.user)
+    def post(self, request, pk):
+        try:
+            participant = EventoParticipant.objects.get(pk=pk, user=request.user)
+        except EventoParticipant.DoesNotExist:
+            return Response({'error': 'No encontrado'}, status=status.HTTP_404_NOT_FOUND)
 
-    def perform_update(self, serializer):
-        participant = serializer.save(paid=True, paid_at=timezone.now())
+        amount = request.data.get('amount')
+        concept = request.data.get('concept', f"Evento: {participant.evento.name}")
+        destination_account = request.data.get('destination_account', "")
+
+        if not amount:
+            return Response({'error': 'Amount is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        evento = participant.evento
         
         # Registrar el pago en el libro mayor (Tabla Transaccion)
         from apps.finanzas.models import Transaccion
-        evento = participant.evento
         
         if participant.user != evento.responsible and evento.responsible is not None:
             Transaccion.objects.create(
                 parche=evento.parche,
                 from_user=participant.user,
                 to_user=evento.responsible,
-                amount=participant.amount_owed,
+                evento=evento,
+                amount=amount,
                 type='pago',
-                concept=f"Evento: {evento.name}"
+                concept=concept,
+                destination_account=destination_account
             )
+            
+        return Response({'status': 'ok'})
 
 
 class UploadPaymentProofView(APIView):
@@ -93,9 +104,23 @@ class PendingDebtsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        pendientes = EventoParticipant.objects.filter(
+        from django.db.models import Sum, F, Q, DecimalField
+        from django.db.models.functions import Coalesce
+
+        pendientes = EventoParticipant.objects.annotate(
+            paid_calc=Coalesce(
+                Sum(
+                    'user__transacciones_enviadas__amount',
+                    filter=Q(
+                        user__transacciones_enviadas__evento=F('evento'),
+                        user__transacciones_enviadas__type='pago'
+                    )
+                ), 0.0, output_field=DecimalField()
+            )
+        ).filter(
+            ~Q(user=F('evento__responsible')),
             user=request.user,
-            paid=False
+            amount_owed__gt=F('paid_calc')
         ).select_related('evento', 'evento__parche', 'evento__responsible')
 
         data = [
@@ -106,6 +131,8 @@ class PendingDebtsView(APIView):
                 'parche_id':        p.evento.parche.id,
                 'parche_nombre':    p.evento.parche.name,
                 'monto_adeudado':   str(p.amount_owed),
+                'monto_pagado':     str(p.paid_calc),
+                'monto_restante':   str(p.amount_owed - p.paid_calc),
                 'responsable':      p.evento.responsible.username if p.evento.responsible else None,
                 'pay_immediately':  p.evento.pay_immediately,
                 'estado_evento':    p.evento.status,
