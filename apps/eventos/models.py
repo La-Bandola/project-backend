@@ -43,6 +43,25 @@ class EventoParticipant(models.Model):
     def __str__(self):
         return f"{self.user.username} en {self.evento.name}"
 
+    @property
+    def amount_paid(self):
+        from apps.finanzas.models import Transaccion
+        from django.db.models import Sum
+        total = Transaccion.objects.filter(
+            evento=self.evento,
+            from_user=self.user,
+            type='pago'
+        ).aggregate(t=Sum('amount'))['t']
+        return float(total) if total else 0.0
+
+    @property
+    def is_fully_paid(self):
+        # We also check if amount_owed <= amount_paid
+        # to dynamically determine if it's fully paid
+        if self.evento.responsible and self.evento.responsible == self.user:
+            return True
+        return self.amount_paid >= float(self.amount_owed)
+
 
 class Suscripcion(models.Model):
     parche      = models.ForeignKey(Parche, on_delete=models.CASCADE, related_name='suscripciones')

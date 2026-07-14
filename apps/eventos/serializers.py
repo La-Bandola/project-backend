@@ -1,18 +1,34 @@
 from rest_framework import serializers
 from .models import Evento, EventoParticipant, Suscripcion
 from apps.users.serializers import UserSerializer
+from apps.users.models import BankAccount
+
+
+class BankAccountMiniSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BankAccount
+        fields = ['id', 'bank', 'number', 'is_primary']
+
+
+class UserWithBankSerializer(UserSerializer):
+    cuentas_bancarias = BankAccountMiniSerializer(source='bank_accounts', many=True, read_only=True)
+
+    class Meta(UserSerializer.Meta):
+        fields = UserSerializer.Meta.fields + ['cuentas_bancarias']
 
 
 class EventoParticipantSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
+    amount_paid = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    paid = serializers.BooleanField(source='is_fully_paid', read_only=True)
 
     class Meta:
         model  = EventoParticipant
-        fields = ['id', 'user', 'amount_owed', 'paid', 'payment_proof', 'paid_at']
+        fields = ['id', 'user', 'amount_owed', 'amount_paid', 'paid', 'payment_proof', 'paid_at']
 
 
 class EventoSerializer(serializers.ModelSerializer):
-    responsible  = UserSerializer(read_only=True)
+    responsible  = UserWithBankSerializer(read_only=True)
     participants = EventoParticipantSerializer(many=True, read_only=True)
 
     responsible_id    = serializers.IntegerField(write_only=True, required=False)

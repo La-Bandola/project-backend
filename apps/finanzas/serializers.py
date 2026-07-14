@@ -12,7 +12,7 @@ class TransaccionSerializer(serializers.ModelSerializer):
         model  = Transaccion
         fields = [
             'id', 'parche', 'parche_name', 'from_user', 'to_user', 'to_user_id',
-            'amount', 'type', 'concept', 'created_at'
+            'amount', 'type', 'concept', 'destination_account', 'created_at'
         ]
         read_only_fields = ['id', 'created_at', 'parche', 'from_user']
 
