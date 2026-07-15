@@ -9,7 +9,8 @@ def notify_transaccion(sender, instance, created, **kwargs):
     if created and instance.type == 'pago':
         # Notify the receiver
         if instance.to_user and instance.to_user != instance.from_user:
-            message = f"Has recibido un pago de ${int(instance.amount)} de {instance.from_user.username}."
+            monto_str = f"{int(instance.amount):,}".replace(",", ".")
+            message = f"Has recibido un pago de ${monto_str} de {instance.from_user.username}."
             if instance.evento:
                 message += f" (Evento: {instance.evento.name})"
             Notification.objects.create(
@@ -24,7 +25,8 @@ def notify_transaccion(sender, instance, created, **kwargs):
 def notify_evento_debt(sender, instance, created, **kwargs):
     if created and instance.amount_owed > 0:
         if instance.evento.responsible and instance.user != instance.evento.responsible:
-            message = f"Tienes una nueva deuda de ${int(instance.amount_owed)} en el evento '{instance.evento.name}'."
+            monto_str = f"{int(instance.amount_owed):,}".replace(",", ".")
+            message = f"Tienes una nueva deuda de ${monto_str} en el evento '{instance.evento.name}'."
             Notification.objects.create(
                 user=instance.user,
                 message=message,
@@ -45,9 +47,10 @@ def notify_suscripcion(sender, instance, created, **kwargs):
         for member in members:
             if instance.responsible and member.user == instance.responsible:
                 continue
+            monto_str = f"{int(instance.amount):,}".replace(",", ".")
             Notification.objects.create(
                 user=member.user,
-                message=f"Nueva suscripción agregada: '{instance.name}' de ${int(instance.amount)}.",
+                message=f"Nueva suscripción agregada: '{instance.name}' de ${monto_str}.",
                 parche_id=instance.parche.id,
                 related_type='suscripcion',
                 related_id=instance.id
@@ -63,9 +66,10 @@ def notify_aporte_ahorro(sender, instance, created, **kwargs):
         for member in members:
             if member.user == instance.user:
                 continue
+            monto_str = f"{int(instance.amount):,}".replace(",", ".")
             Notification.objects.create(
                 user=member.user,
-                message=f"{instance.user.username} aportó ${int(instance.amount)} al ahorro '{instance.ahorro.name}'.",
+                message=f"{instance.user.username} aportó ${monto_str} al ahorro '{instance.ahorro.name}'.",
                 parche_id=instance.ahorro.parche.id,
                 related_type='ahorro',
                 related_id=instance.ahorro.id
