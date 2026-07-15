@@ -104,10 +104,9 @@ else:
             'PASSWORD': config('POSTGRES_PASSWORD'),
             'HOST': config('POSTGRES_HOST'),
             'PORT': config('POSTGRES_PORT'),
-             'OPTIONS': {
-                 # 'require' para Neon en producción; 'disable' para Docker local
-                 'sslmode': config('POSTGRES_SSLMODE', default='disable'),
-             },
+            'OPTIONS': {
+                 'sslmode': 'require',  # ← obligatorio para Neon, pero rompe localhost
+            },
         }
     }
 
