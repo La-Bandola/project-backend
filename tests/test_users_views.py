@@ -1,63 +1,134 @@
-import pytest
+from dataclasses import dataclass
+from typing import Optional
+import pytest;
 
 
-BANCOS_PERMITIDOS = ['nequi', 'daviplata', 'bancolombia', 'otro']
+ALLOWED_BANKS = ['nequi', 'daviplata', 'bancolombia', 'otro']
 
 
-def validar_cuenta_bancaria(data: dict) -> dict:
-    errores = []
+def validate_bank_account(data: dict) -> dict:
+    errors = []
 
-    bank   = data.get('bank', '').strip().lower()
+    bank = data.get('bank', '').strip().lower()
     number = data.get('number', '').strip()
 
     if not bank:
-        errores.append("El banco es requerido")
-    elif bank not in BANCOS_PERMITIDOS:
-        errores.append(f"Banco no permitido. Opciones: {', '.join(BANCOS_PERMITIDOS)}")
+        errors.append("El banco es requerido")
+    elif bank not in ALLOWED_BANKS:
+        errors.append(f"Banco no permitido. Opciones: {', '.join(ALLOWED_BANKS)}")
 
     if not number:
-        errores.append("El número o llave de cuenta es requerido")
+        errors.append("El número o llave de cuenta es requerido")
     elif len(number) < 5:
-        errores.append("El número de cuenta debe tener al menos 5 caracteres")
+        errors.append("El número de cuenta debe tener al menos 5 caracteres")
 
     return {
-        'valido':  len(errores) == 0,
-        'errores': errores,
+        'valid': len(errors) == 0,
+        'errors': errors,
     }
 
 
-class TestCuentasBancarias:
+class TestBankAccounts:
 
-    def test_aceptar_cuenta_con_datos_validos(self):
-
+    def test_accept_account_with_valid_data(self):
         data = {
-            'bank':       'nequi',
-            'number':     '3001234567',
+            'bank': 'nequi',
+            'number': '3001234567',
             'is_primary': True,
         }
-        result = validar_cuenta_bancaria(data)
+        result = validate_bank_account(data)
 
-        assert result['valido']       is True
-        assert len(result['errores']) == 0
+        assert result['valid'] is True
+        assert len(result['errors']) == 0
 
-    def test_rechazar_banco_no_permitido(self):
-
+    def test_reject_not_allowed_bank(self):
         data = {
-            'bank':   'bbva',
+            'bank': 'bbva',
             'number': '3001234567',
         }
-        result = validar_cuenta_bancaria(data)
+        result = validate_bank_account(data)
 
-        assert result['valido'] is False
-        assert any('no permitido' in e for e in result['errores'])
+        assert result['valid'] is False
+        assert any('no permitido' in e for e in result['errors'])
 
-    def test_rechazar_numero_vacio(self):
-
+    def test_reject_empty_number(self):
         data = {
-            'bank':   'nequi',
+            'bank': 'nequi',
             'number': '',
         }
-        result = validar_cuenta_bancaria(data)
+        result = validate_bank_account(data)
 
-        assert result['valido'] is False
-        assert any('número' in e.lower() or 'llave' in e.lower() for e in result['errores'])
+        assert result['valid'] is False
+        assert any('número' in e.lower() or 'llave' in e.lower() for e in result['errors'])
+
+
+@dataclass
+class UserRegistration:
+    username: str
+    email: str
+    password: str
+    nickname: Optional[str] = None
+
+
+def validate_registration(data: dict) -> dict:
+    errors = []
+
+    username = data.get('username', '').strip()
+    email = data.get('email', '').strip()
+    password = data.get('password', '')
+
+    if not username:
+        errors.append("El username es requerido")
+    elif len(username) < 3:
+        errors.append("El username debe tener al menos 3 caracteres")
+
+    if not email:
+        errors.append("El email es requerido")
+    elif '@' not in email:
+        errors.append("El email no es válido")
+
+    if not password:
+        errors.append("La contraseña es requerida")
+    elif len(password) < 8:
+        errors.append("La contraseña debe tener al menos 8 caracteres")
+
+    return {
+        'valid': len(errors) == 0,
+        'errors': errors,
+    }
+
+
+class TestUserRegistration:
+
+    def test_registration_with_correct_data(self):
+        data = {
+            'username': 'testuser',
+            'email': 'test@parcheck.com',
+            'password': 'password123',
+        }
+        result = validate_registration(data)
+
+        assert result['valid'] is True
+        assert len(result['errors']) == 0
+
+    def test_reject_without_password(self):
+        data = {
+            'username': 'testuser',
+            'email': 'test@parcheck.com',
+            'password': '',
+        }
+        result = validate_registration(data)
+
+        assert result['valid'] is False
+        assert any('contraseña' in e.lower() for e in result['errors'])
+
+    def test_reject_password_too_short(self):
+        data = {
+            'username': 'testuser',
+            'email': 'test@parcheck.com',
+            'password': '1234567',  # 7 caracteres, mínimo es 8
+        }
+        result = validate_registration(data)
+
+        assert result['valid'] is False
+        assert any('8 caracteres' in e for e in result['errors'])

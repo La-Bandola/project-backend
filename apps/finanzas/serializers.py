@@ -5,20 +5,22 @@ from apps.users.serializers import UserSerializer
 class TransaccionSerializer(serializers.ModelSerializer):
     from_user = UserSerializer(read_only=True)
     to_user   = UserSerializer(read_only=True)
-    to_user_id = serializers.IntegerField(write_only=True)
+    to_user_id = serializers.IntegerField(write_only=True, required=False)
+    parche_name = serializers.CharField(source='parche.name', read_only=True)
 
     class Meta:
         model  = Transaccion
         fields = [
-            'id', 'parche', 'from_user', 'to_user', 'to_user_id',
-            'amount', 'type', 'concept', 'created_at'
+            'id', 'parche', 'parche_name', 'from_user', 'to_user', 'to_user_id',
+            'amount', 'type', 'concept', 'destination_account', 'created_at'
         ]
         read_only_fields = ['id', 'created_at', 'parche', 'from_user']
 
     def create(self, validated_data):
-        to_user_id = validated_data.pop('to_user_id')
-        from apps.users.models import User
-        validated_data['to_user'] = User.objects.get(id=to_user_id)
+        to_user_id = validated_data.pop('to_user_id', None)
+        if to_user_id:
+            from apps.users.models import User
+            validated_data['to_user'] = User.objects.get(id=to_user_id)
         return Transaccion.objects.create(**validated_data)
 
 

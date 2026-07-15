@@ -31,11 +31,14 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'corsheaders',
+    'rest_framework_simplejwt.token_blacklist',
     # ParCheck
     'apps.users',
     'apps.parches',
     'apps.eventos',
     'apps.finanzas',
+    'apps.ahorros',
+    'apps.soporte',
 
 ]
 
@@ -74,16 +77,39 @@ WSGI_APPLICATION = 'parcheck_backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('POSTGRES_DB'),
-        'USER': config('POSTGRES_USER'),
-        'PASSWORD': config('POSTGRES_PASSWORD'),
-        'HOST': config('POSTGRES_HOST'),
-        'PORT': config('POSTGRES_PORT'),
+try:
+    import psycopg2  # noqa: F401
+    HAS_POSTGRES_DRIVER = True
+except ImportError:
+    HAS_POSTGRES_DRIVER = False
+
+USE_SQLITE_FOR_TESTS = (
+    not HAS_POSTGRES_DRIVER
+    or os.getenv('PARCHECK_USE_SQLITE', '').lower() in {'1', 'true', 'yes'}
+)
+
+if USE_SQLITE_FOR_TESTS:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': config('POSTGRES_DB'),
+            'USER': config('POSTGRES_USER'),
+            'PASSWORD': config('POSTGRES_PASSWORD'),
+            'HOST': config('POSTGRES_HOST'),
+            'PORT': config('POSTGRES_PORT'),
+             'OPTIONS': {
+                 # 'require' para Neon en producción; 'disable' para Docker local
+                 'sslmode': config('POSTGRES_SSLMODE', default='disable'),
+             },
+        }
+    }
 
 AUTH_USER_MODEL = 'users.User'
 
@@ -130,7 +156,10 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
     "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
 ]
 
 from datetime import timedelta
@@ -142,10 +171,22 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '20/min',
+        'user': '60/min',
+        'login': '5/min',
+    },
 }
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME':  timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS':  True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'UPDATE_LAST_LOGIN': True,
 }
 
