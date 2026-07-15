@@ -108,7 +108,10 @@ class PendingDebtsView(APIView):
                 Sum(
                     'user__transacciones_enviadas__amount',
                     filter=Q(
-                        user__transacciones_enviadas__evento=F('evento'),
+                        # Todos los pagos al responsable del evento en el parche,
+                        # incluyendo pagos manuales sin evento vinculado (evento=None)
+                        user__transacciones_enviadas__to_user=F('evento__responsible'),
+                        user__transacciones_enviadas__parche=F('evento__parche'),
                         user__transacciones_enviadas__type='pago'
                     )
                 ), 0.0, output_field=DecimalField()
@@ -137,6 +140,7 @@ class PendingDebtsView(APIView):
             for p in pendientes
         ]
         return Response(data, status=status.HTTP_200_OK)
+
 
 
 class SuscripcionListCreateView(generics.ListCreateAPIView):
