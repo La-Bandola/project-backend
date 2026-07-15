@@ -4,10 +4,10 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework.throttling import AnonRateThrottle
-from .models import User, BankAccount
+from .models import User, BankAccount, Notification
 from .serializers import (
     RegisterSerializer, UserSerializer,
-    BankAccountSerializer, ChangePasswordSerializer
+    BankAccountSerializer, ChangePasswordSerializer, NotificationSerializer
 )
 from apps.parches.models import Membership
 
@@ -138,3 +138,32 @@ class ContactBankAccountsView(APIView):
             for c in cuentas
         ]
         return Response(data, status=status.HTTP_200_OK)
+
+
+class NotificationListView(generics.ListAPIView):
+    serializer_class = NotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Notification.objects.filter(user=self.request.user).order_by('-created_at')
+
+
+class MarkNotificationReadView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, pk):
+        try:
+            notif = Notification.objects.get(pk=pk, user=request.user)
+            notif.is_read = True
+            notif.save()
+            return Response(NotificationSerializer(notif).data)
+        except Notification.DoesNotExist:
+            return Response({'error': 'Notificación no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class MarkAllNotificationsReadView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+        return Response({'status': 'ok'})

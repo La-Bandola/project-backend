@@ -27,3 +27,18 @@ class BankAccount(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.bank}"
+
+
+class Notification(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    # Metadata for linking
+    parche_id = models.IntegerField(null=True, blank=True)
+    related_type = models.CharField(max_length=50, null=True, blank=True)  # e.g., 'evento', 'transaccion', 'suscripcion', 'ahorro'
+    related_id = models.IntegerField(null=True, blank=True)
+
+    def __str__(self):
+        return f"Notif for {self.user.username}: {self.message[:30]}"
