@@ -104,40 +104,57 @@ class BalancePersonalView(APIView):
             if month: qs = qs.filter(created_at__month=month)
             return qs
 
-        enviado = tx_filter(Transaccion.objects.filter(parche_id=parche_id, from_user=user, type='pago')).aggregate(t=Sum('amount'))['t'] or 0
+        enviado  = tx_filter(Transaccion.objects.filter(parche_id=parche_id, from_user=user, type='pago')).aggregate(t=Sum('amount'))['t'] or 0
         recibido = tx_filter(Transaccion.objects.filter(parche_id=parche_id, to_user=user, type='pago')).aggregate(t=Sum('amount'))['t'] or 0
-        
         deudas_tx = tx_filter(Transaccion.objects.filter(parche_id=parche_id, from_user=user, type='deuda')).aggregate(t=Sum('amount'))['t'] or 0
-        
+
+        # IDs de responsables de eventos donde el usuario tiene deudas (para evitar doble conteo)
+        responsible_ids = set(EventoParticipant.objects.filter(
+            evento__parche_id=parche_id, user=user
+        ).exclude(
+            user=F('evento__responsible')
+        ).values_list('evento__responsible_id', flat=True))
+
         qs_evt_deuda = EventoParticipant.objects.filter(
             ~Q(user=F('evento__responsible')),
             evento__parche_id=parche_id, user=user
         )
-        if year: qs_evt_deuda = qs_evt_deuda.filter(evento__created_at__year=year)
+        if year:  qs_evt_deuda = qs_evt_deuda.filter(evento__created_at__year=year)
         if month: qs_evt_deuda = qs_evt_deuda.filter(evento__created_at__month=month)
-        
+
         qs_evt_deuda = qs_evt_deuda.annotate(
             amount_paid_calc=Coalesce(
                 Sum(
                     'user__transacciones_enviadas__amount',
                     filter=Q(
-                        user__transacciones_enviadas__evento=F('evento'),
-                        user__transacciones_enviadas__type='pago'
+                        # Todos los pagos al responsable del evento en el parche,
+                        # incluyendo pagos manuales sin evento vinculado (evento=None)
+                        user__transacciones_enviadas__to_user=F('evento__responsible'),
+                        user__transacciones_enviadas__parche_id=parche_id,
+                        user__transacciones_enviadas__type='pago',
                     )
                 ), 0.0, output_field=DecimalField()
             )
         ).filter(amount_owed__gt=F('amount_paid_calc'))
-        
+
         deudas_evt = sum(float(p.amount_owed) - float(p.amount_paid_calc) for p in qs_evt_deuda)
-        
         deudas = float(deudas_tx) + deudas_evt
+
+        # Pagos que NO van a responsables de eventos → los únicos que se restan del neto
+        # para evitar doble conteo (los pagos a responsables ya reducen deudas_evt)
+        enviado_standalone = float(tx_filter(Transaccion.objects.filter(
+            parche_id=parche_id, from_user=user, type='pago'
+        ).exclude(
+            to_user_id__in=responsible_ids
+        )).aggregate(t=Sum('amount'))['t'] or 0)
 
         return Response({
             'pagado':   float(enviado),
             'recibido': float(recibido),
             'deudas':   deudas,
-            'neto':     float(recibido) - float(enviado) - deudas,
+            'neto':     float(recibido) - enviado_standalone - deudas,
         })
+
 
 
 class BalanceMensualView(APIView):
@@ -201,6 +218,14 @@ class ResumenMutuoView(APIView):
     def get(self, request, parche_id):
         user = request.user
 
+        # IDs de responsables de eventos donde el usuario tiene deudas
+        # Estos pagos se procesan en el paso 2 (vía amount_paid_calc) para evitar doble conteo
+        responsible_ids = set(EventoParticipant.objects.filter(
+            evento__parche_id=parche_id, user=user
+        ).exclude(
+            user=F('evento__responsible')
+        ).values_list('evento__responsible_id', flat=True))
+
         transacciones = Transaccion.objects.filter(
             parche_id=parche_id
         ).filter(
@@ -208,17 +233,25 @@ class ResumenMutuoView(APIView):
         ).select_related('from_user', 'to_user')
 
         resumen = {}
-        for tx in transacciones:
+
+        # Paso 1: Solo transacciones standalone (sin evento vinculado)
+        # Las transacciones de pago a responsables de eventos se omiten aquí
+        # porque ya quedan capturadas en la reducción de deuda_restante del paso 2
+        for tx in transacciones.filter(evento__isnull=True):
             if tx.from_user == user:
-                otro = tx.to_user
-                resumen.setdefault(otro.username, 0)
-                resumen[otro.username] -= float(tx.amount)
+                if tx.to_user_id not in responsible_ids:
+                    # Pago a alguien que NO es responsable de ningún evento mío
+                    otro = tx.to_user
+                    resumen.setdefault(otro.username, 0)
+                    resumen[otro.username] -= float(tx.amount)
             else:
+                # Dinero recibido: siempre lo incluimos
                 otro = tx.from_user
                 resumen.setdefault(otro.username, 0)
                 resumen[otro.username] += float(tx.amount)
 
-        # Agregar deudas de eventos
+        # Paso 2: Deudas de eventos usando TODOS los pagos al responsable
+        # (incluyendo pagos manuales sin evento vinculado)
         participaciones = EventoParticipant.objects.filter(
             evento__parche_id=parche_id
         ).filter(
@@ -228,7 +261,8 @@ class ResumenMutuoView(APIView):
                 Sum(
                     'user__transacciones_enviadas__amount',
                     filter=Q(
-                        user__transacciones_enviadas__evento=F('evento'),
+                        user__transacciones_enviadas__to_user=F('evento__responsible'),
+                        user__transacciones_enviadas__parche_id=parche_id,
                         user__transacciones_enviadas__type='pago'
                     )
                 ), 0.0, output_field=DecimalField()
@@ -242,7 +276,7 @@ class ResumenMutuoView(APIView):
                 otro = p.evento.responsible
                 resumen.setdefault(otro.username, 0)
                 resumen[otro.username] -= deuda_restante
-            
+
             # Si al usuario le deben (es el responsable del evento)
             if p.evento.responsible == user and p.user != user:
                 otro = p.user
@@ -250,6 +284,7 @@ class ResumenMutuoView(APIView):
                 resumen[otro.username] += deuda_restante
 
         return Response(resumen)
+
 
 
 class BoletinInicioView(APIView):

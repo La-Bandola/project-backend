@@ -45,14 +45,21 @@ class EventoParticipant(models.Model):
 
     @property
     def amount_paid(self):
+        """Suma de todos los pagos del participante al responsable del evento
+        en este parche. Incluye pagos manuales (sin evento vinculado) ademas
+        de los pagos directos al evento. Se limita al monto adeudado."""
         from apps.finanzas.models import Transaccion
         from django.db.models import Sum
+        if not self.evento.responsible:
+            return 0.0
         total = Transaccion.objects.filter(
-            evento=self.evento,
             from_user=self.user,
+            to_user=self.evento.responsible,
+            parche=self.evento.parche,
             type='pago'
         ).aggregate(t=Sum('amount'))['t']
-        return float(total) if total else 0.0
+        paid = float(total) if total else 0.0
+        return min(paid, float(self.amount_owed))
 
     @property
     def is_fully_paid(self):
