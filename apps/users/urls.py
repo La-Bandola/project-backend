@@ -3,7 +3,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .views import (
     RegisterView, LogoutView, ProfileView, ChangePasswordView,
     BankAccountListCreateView, BankAccountDetailView,
-    ContactBankAccountsView
+    ContactBankAccountsView,
+    NotificationListView, MarkNotificationReadView, MarkAllNotificationsReadView
 )
 
 urlpatterns = [
@@ -23,4 +24,9 @@ urlpatterns = [
 
     # Cuentas bancarias de contactos del parche (RF_7)
     path('parches/<int:parche_id>/contacts/bank-accounts/', ContactBankAccountsView.as_view(), name='contact_bank_accounts'),
+
+    # Notificaciones
+    path('notifications/', NotificationListView.as_view(), name='notifications'),
+    path('notifications/<int:pk>/read/', MarkNotificationReadView.as_view(), name='mark_notification_read'),
+    path('notifications/read-all/', MarkAllNotificationsReadView.as_view(), name='mark_all_notifications_read'),
 ]

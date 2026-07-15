@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.exceptions import PermissionDenied
 
 from .models import Membership, Parche
 from .serializers import JoinParcheSerializer, ParcheSerializer
@@ -25,6 +26,11 @@ class ParcheDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         return Parche.objects.filter(memberships__user=self.request.user)
+
+    def perform_destroy(self, instance):
+        if instance.creator != self.request.user:
+            raise PermissionDenied("Solo el creador del parche puede eliminarlo.")
+        instance.delete()
 
 class JoinParcheView(APIView):
     permission_classes = [permissions.IsAuthenticated]

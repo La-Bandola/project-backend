@@ -3,7 +3,7 @@ from typing import Any, Dict
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 
-from .models import BankAccount, User
+from .models import BankAccount, User, Notification
 from .services import create_bank_account, create_registered_user
 
 
@@ -70,3 +70,10 @@ class ChangePasswordSerializer(serializers.Serializer):
         user.set_password(self.validated_data['new_password'])
         user.save()
         return user
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ['id', 'message', 'is_read', 'created_at', 'parche_id', 'related_type', 'related_id']
+        read_only_fields = fields
