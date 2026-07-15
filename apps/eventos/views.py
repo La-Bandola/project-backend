@@ -1,11 +1,14 @@
+from django.core.exceptions import ValidationError
 from rest_framework import generics, permissions, status
-from rest_framework.views import APIView
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser
-from django.utils import timezone
-from .models import Evento, EventoParticipant, Suscripcion
-from .serializers import EventoSerializer, EventoParticipantSerializer, SuscripcionSerializer
+from rest_framework.views import APIView
+
+from apps.finanzas.services import pay_event_participant
 from apps.parches.models import Parche
+
+from .models import Evento, EventoParticipant, Suscripcion
+from .serializers import EventoParticipantSerializer, EventoSerializer, SuscripcionSerializer
 
 
 class EventoListCreateView(generics.ListCreateAPIView):
@@ -46,28 +49,21 @@ class PagarEventoView(APIView):
 
         amount = request.data.get('amount')
         concept = request.data.get('concept', f"Evento: {participant.evento.name}")
-        destination_account = request.data.get('destination_account', "")
+        destination_account = request.data.get('destination_account', '')
 
         if not amount:
             return Response({'error': 'Amount is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-        evento = participant.evento
-        
-        # Registrar el pago en el libro mayor (Tabla Transaccion)
-        from apps.finanzas.models import Transaccion
-        
-        if participant.user != evento.responsible and evento.responsible is not None:
-            Transaccion.objects.create(
-                parche=evento.parche,
-                from_user=participant.user,
-                to_user=evento.responsible,
-                evento=evento,
+        try:
+            pay_event_participant(
+                participant=participant,
                 amount=amount,
-                type='pago',
                 concept=concept,
-                destination_account=destination_account
+                destination_account=destination_account,
             )
-            
+        except ValidationError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
         return Response({'status': 'ok'})
 
 

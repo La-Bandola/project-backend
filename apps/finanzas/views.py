@@ -1,13 +1,16 @@
-from rest_framework import generics, permissions
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from django.db.models import Sum, Q, F, DecimalField
+from django.core.exceptions import ValidationError
+from django.db.models import DecimalField, F, Q, Sum
 from django.db.models.functions import Coalesce
-from .models import Transaccion, Balance
-from .serializers import TransaccionSerializer, BalanceSerializer
-from apps.parches.models import Parche, Membership
+from rest_framework import generics, permissions
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
 from apps.eventos.models import EventoParticipant
-from apps.ahorros.models import AporteAhorro
+from apps.parches.models import Membership, Parche
+
+from .models import Balance, Transaccion
+from .serializers import BalanceSerializer, TransaccionSerializer
+from .services import create_transaction, pay_event_participant
 
 
 class TransaccionListCreateView(generics.ListCreateAPIView):
@@ -35,8 +38,11 @@ class TransaccionListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         parche_id = self.kwargs['parche_id']
-        parche    = Parche.objects.get(id=parche_id)
-        serializer.save(from_user=self.request.user, parche=parche)
+        parche = Parche.objects.get(id=parche_id)
+        serializer.save(
+            from_user=self.request.user,
+            parche=parche,
+        )
 
 
 class TransaccionDetailView(generics.RetrieveUpdateDestroyAPIView):
